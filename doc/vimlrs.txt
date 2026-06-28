@@ -1,0 +1,187 @@
+*vimlrs.txt*   Syntax, filetype, indent, linting and LSP support for VimL (vimlrs)
+
+                              vim-viml manual
+
+==============================================================================
+CONTENTS                                                        *vim-viml*
+
+    1. Introduction ........................... |vim-viml-intro|
+    2. Installation ........................... |vim-viml-install|
+    3. Filetype detection ..................... |vim-viml-ftdetect|
+    4. Syntax highlighting .................... |vim-viml-syntax|
+    5. Running (:make / :VimlRun) ............. |vim-viml-run|
+    6. Linting (ALE) .......................... |vim-viml-ale|
+    7. Language server (LSP) .................. |vim-viml-lsp|
+    8. Debug adapter (DAP) .................... |vim-viml-dap|
+    9. Options ................................ |vim-viml-options|
+
+==============================================================================
+1. INTRODUCTION                                            *vim-viml-intro*
+
+vim-viml adds Vim / Neovim support for VimL (Vimscript), targeting vimlrs — a
+standalone Vimscript interpreter, a Rust port of Neovim's eval engine running
+on fusevm. It provides:
+
+    - filetype detection for *.vim files, the vimrc / gvimrc / exrc family,
+      and vimlrs / vim / nvim shebangs
+    - standalone VimL syntax highlighting (statements, ex commands, scope
+      vars, v: vars, the ported builtin-function subset)
+    - keyword-aware indentation
+    - `:make` / `:VimlRun` wiring through the vimlrs binary
+    - ALE linting via `vimlrs %t`
+    - vim-lsp / coc.nvim registration via `vimlrs --lsp`
+    - nvim-dap guidance via `vimlrs --dap`
+
+This runtime AUGMENTS Vim's built-in `vim` filetype: the ftplugin guards on
+its own marker (`b:did_ftplugin_vimlrs`) so it layers the vimlrs run / make
+wiring on top of the stock vim-ftplugin rather than replacing it.
+
+==============================================================================
+2. INSTALLATION                                          *vim-viml-install*
+
+pathogen (https://github.com/tpope/vim-pathogen): >
+    cd ~/.vim/bundle
+    git clone https://github.com/MenkeTechnologies/vim-viml
+<
+Then generate help tags: >
+    :Helptags
+<
+vim-plug: >
+    Plug 'MenkeTechnologies/vim-viml'
+<
+Native packages (Vim 8+ / Neovim): >
+    git clone https://github.com/MenkeTechnologies/vim-viml \
+        ~/.vim/pack/plugins/start/vim-viml
+<
+The `vimlrs` binary must be on $PATH for running, linting and LSP to work.
+
+==============================================================================
+3. FILETYPE DETECTION                                   *vim-viml-ftdetect*
+
+Buffers are set to the "vim" filetype when:
+
+    - the filename ends in *.vim, or
+    - the filename is one of the rc / init family — vimrc .vimrc _vimrc
+      gvimrc .gvimrc _gvimrc .exrc _exrc .nvimrc init.vim, or
+    - line 1 is a shebang naming vimlrs / vim / nvim,
+      e.g. `#!/usr/bin/env vimlrs`.
+
+==============================================================================
+4. SYNTAX HIGHLIGHTING                                    *vim-viml-syntax*
+
+A standalone VimL grammar covering the eval-engine surface vimlrs implements:
+
+    statements    if elseif else endif while endwhile for endfor in function
+                  endfunction return break continue try catch finally throw
+                  let unlet const lockvar unlockvar call eval execute echo
+                  echon echohl echomsg echoerr echowindow finish
+    ex commands   source runtime normal redir silent verbose set setlocal
+                  setglobal command delcommand autocmd augroup highlight syntax
+                  map / noremap family sign sleep abbreviate
+    scope vars    g: s: b: w: t: l: a: v: (+ &option, $ENV, @register)
+    v: vars       v:true v:false v:null v:none v:count v:val v:key v:exception
+                  v:lnum v:errmsg v:shell_error v:char v:register …
+    builtin fns   abs add call copy count deepcopy empty escape eval execute
+                  exists extend filter get getenv has has_key index input
+                  insert items join json_decode json_encode keys len map match
+                  matchstr max min printf range reduce remove repeat reverse
+                  sort split string strlen strpart substitute trim type values
+                  (+ math sin cos sqrt pow floor ceil, bit and/or/xor, …)
+
+Single-quoted literal strings, double-quoted strings with backslash escapes,
+command-position `"` comments, numbers (decimal / 0x hex / float), and the
+operator set are handled. Everything links to standard highlight groups, so
+every colorscheme covers it.
+
+The token surface is hand-curated. `scripts/gen_syntax.sh` stamps the file
+with the vimlrs version it was verified against.
+
+Note on comments: in VimL a `"` is a comment only in command position; in
+expression position it opens a double-quoted string (the classic VimL
+ambiguity). The grammar handles the common full-line / trailing-comment cases
+pragmatically, as Vim's own runtime syntax does.
+
+==============================================================================
+5. RUNNING                                                  *vim-viml-run*
+
+The ftplugin sets `:compiler vimlrs`, so `:make` runs the current program
+through vimlrs and routes any parse / compile / runtime diagnostics to the
+quickfix list: >
+    :make
+<
+vimlrs takes the script as a POSITIONAL argument — there is no `-f` flag. To
+execute the current buffer as a VimL program: >
+    :VimlRun [args...]
+<
+Mapped by default to <LocalLeader>r (disable with `g:vim_viml_no_maps`).
+
+vimlrs has no standalone lint / parse-check mode yet; running the script is
+what surfaces parse / compile errors (on stderr, as Vim-style messages). For
+live, non-executing diagnostics use the LSP (|vim-viml-lsp|).
+
+==============================================================================
+6. LINTING (ALE)                                            *vim-viml-ale*
+
+When ALE (https://github.com/dense-analysis/ale) is installed, vim-viml
+registers a linter that runs: >
+    vimlrs %t
+<
+Because vimlrs has no lint flag, the linter runs the script and scrapes the
+Vim-style errors off stderr. Diagnostics of the form "<file>:<line>: <message>"
+or a bare "E121: <message>" are surfaced inline.
+
+==============================================================================
+7. LANGUAGE SERVER (LSP)                                    *vim-viml-lsp*
+
+vim-lsp (https://github.com/prabirshrestha/vim-lsp): registered automatically
+as: >
+    vimlrs --lsp
+<
+allowlisted for the "vim" filetype. Invoke `vimlrs --lsp` with ONLY `--lsp`
+(no appended `--stdio`), mirroring `stryke --lsp`.
+
+coc.nvim: add to coc-settings.json: >
+    {
+      "languageserver": {
+        "vimlrs": {
+          "command": "vimlrs",
+          "args": ["--lsp"],
+          "filetypes": ["vim"]
+        }
+      }
+    }
+<
+==============================================================================
+8. DEBUG ADAPTER (DAP)                                      *vim-viml-dap*
+
+vimlrs is wired for a Debug Adapter via `vimlrs --dap` (DAP on stdio). For
+nvim-dap (https://github.com/mfussenegger/nvim-dap): >
+    local dap = require('dap')
+    dap.adapters.vimlrs = {
+      type = 'executable',
+      command = 'vimlrs',
+      args = { '--dap' },   -- no extra transport args; vimlrs rejects them
+    }
+    dap.configurations.vim = {
+      { type = 'vimlrs', request = 'launch', name = 'Run VimL program',
+        program = '${file}' },
+    }
+<
+As with LSP, invoke vimlrs with ONLY `--dap`.
+
+==============================================================================
+9. OPTIONS                                              *vim-viml-options*
+
+                                                      *g:vim_viml_no_ale*
+Set to 1 before load to skip ALE linter registration: >
+    let g:vim_viml_no_ale = 1
+<
+                                                      *g:vim_viml_no_lsp*
+Set to 1 before load to skip vim-lsp server registration: >
+    let g:vim_viml_no_lsp = 1
+<
+                                                      *g:vim_viml_no_maps*
+Set to 1 before load to skip the <LocalLeader>r run mapping: >
+    let g:vim_viml_no_maps = 1
+<
+ vim:tw=78:ts=8:ft=help:norl:
