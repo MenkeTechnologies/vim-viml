@@ -11,7 +11,7 @@
 " This AUGMENTS / overrides Vim's built-in `vim` filetype syntax (intended): we
 " want the vimlrs builtin subset and tooling story, not the stock runtime file.
 "
-" Verified against vimlrs 0.1.0 — Neovim eval engine port (fusevm).
+" Verified against vimlrs 0.2.1 — Neovim eval engine port (fusevm).
 
 if exists('b:current_syntax')
   finish
